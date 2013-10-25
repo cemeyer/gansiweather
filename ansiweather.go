@@ -16,14 +16,18 @@ import "fmt"
 import "io/ioutil"
 import "net/http"
 import "os"
+import "syscall"
+import "time"
 
 var sflag = false
 var configfile = ".config/gansiweather.conf"
+var cachefile = ".config/gansiweather.cache.json"
+var cachelkfile = ".config/gansiweather.cache.lk"
 var home = ""
 
 // defaults
 var api_key = ""
-var cache_seconds uint64 = 10 * 60
+var cache_seconds time.Duration = 10 * time.Minute
 var city = "Seattle"
 var state = "WA"
 var units = "imperial"
@@ -65,7 +69,7 @@ func main() {
 
 out:
 	if err != nil {
-		fmt.Print(err)
+		fmt.Print(err, "\n")
 		os.Exit(1)
 	}
 }
@@ -74,27 +78,28 @@ func start() (err error) {
 	flag.Parse()
 
 	home = os.Getenv("HOME")
-	if len(home) == 0 {
+	if home == "" {
 		return fmt.Errorf("Could not read $HOME")
 	}
 
 	cfile := home + "/" + configfile
 	fi, err := os.Stat(cfile)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return
+		if os.IsNotExist(err) {
+			err = nil
 		}
-	} else {
-		if !fi.Mode().IsRegular() {
-			return fmt.Errorf("%s: Config is not a regular file", cfile)
-		}
-
-		err = readConfig(cfile)
-		if err != nil {
-			return
-		}
-
+		return
 	}
+
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("%s: Config is not a regular file", cfile)
+	}
+
+	err = readConfig(cfile)
+	if err != nil {
+		return
+	}
+
 	return
 }
 
@@ -123,7 +128,7 @@ func readConfig(cfile string) (err error) {
 		api_key = m.ApiKey
 	}
 	if m.CacheSeconds > 0 {
-		cache_seconds = m.CacheSeconds
+		cache_seconds = time.Duration(m.CacheSeconds) * time.Second
 	}
 	if m.City != "" {
 		city = m.City
@@ -141,9 +146,137 @@ func readConfig(cfile string) (err error) {
 	return
 }
 
+func openCacheLock(how int) (lkf *os.File, err error) {
+	lkf, err = os.OpenFile(home+"/"+cachelkfile, os.O_RDWR|os.O_CREATE,
+		os.FileMode(0600))
+	if err != nil {
+		return
+	}
+
+	err = syscall.Flock(int(lkf.Fd()), how)
+	if err != nil {
+		lkf.Close()
+		lkf = nil
+		return
+	}
+
+	return
+}
+
+func queryWService() (res WData, err error) {
+	present := false
+	stale := false
+
+	fqchfile := home + "/" + cachefile
+
+	fi, err := os.Stat(fqchfile)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return
+		}
+		err = nil
+	} else {
+		present = true
+		if time.Since(fi.ModTime()) > (5 * time.Minute) {
+			stale = true
+		}
+		// XXX we don't know that the location hasn't changed since our cache.
+		// If it has, we should treat this as stale.
+	}
+
+	// If cache present, always parse and return cached result immediately.
+	// If cache is stale, return stale data and fork HTTP GET worker
+	// If cache absent, fg HTTP worker and return results when we have em.
+
+	var body []byte
+	if present {
+		var lkf, c *os.File
+		lkf, err = openCacheLock(syscall.LOCK_SH)
+		if err != nil {
+			return
+		}
+		defer lkf.Close()
+
+		c, err = os.Open(fqchfile)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+
+		body, err = ioutil.ReadAll(c)
+		if err != nil {
+			return
+		}
+	}
+
+	if !present || stale {
+		var newbody []byte
+		newbody, err = updateCache(present)
+		if err != nil {
+			return
+		}
+
+		// We can't background update cache anyways, so we might as well serve
+		// the fresh data
+		/*
+			if !present {
+				body = newbody
+			}
+		*/
+		body = newbody
+	}
+
+	err = parseWJson(body, &res)
+	return
+}
+
+func updateCache(runInBg bool) (body []byte, err error) {
+	// We can't do this in background without re-invoking our process (probably
+	// with some hidden? flag). Damn you issue 227.
+	body, err = queryHttp()
+	if err != nil {
+		body = nil
+		return
+	}
+
+	lkf, err := openCacheLock(syscall.LOCK_EX)
+	if err != nil {
+		body = nil
+		return
+	}
+	defer lkf.Close()
+
+	fqchfile := home + "/" + cachefile
+	err = ioutil.WriteFile(fqchfile, body, os.FileMode(0600))
+	if err != nil {
+		body = nil
+	}
+	return
+}
+
 // api_key, ST, City_Name
 var conditions_query = "http://api.wunderground.com/api/%s/conditions/q/" +
 	"%s/%s.json"
+
+func queryHttp() (res []byte, err error) {
+	url := fmt.Sprintf(conditions_query, api_key, state, city)
+	resp, err := http.Get(url)
+	if err != nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	res, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+
+	if resp.StatusCode != 200 {
+		panic(fmt.Sprint(res))
+	}
+	return
+}
 
 type DisplayLocationResp struct {
 	City string
@@ -169,32 +302,6 @@ type ResponseStatus struct {
 type ConditionsResp struct {
 	CurrentObservation CurrentObservationResp `json:"current_observation"`
 	Response           ResponseStatus
-}
-
-func queryWService() (res WData, err error) {
-	url := fmt.Sprintf(conditions_query, api_key, state, city)
-	resp, err := http.Get(url)
-	if err != nil {
-		return
-	}
-
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return
-	}
-
-	if resp.StatusCode != 200 {
-		panic(fmt.Sprint(body))
-	}
-
-	err = parseWJson(body, &res)
-	if err != nil {
-		return
-	}
-
-	return
 }
 
 func parseWJson(d []byte, wd *WData) (err error) {
