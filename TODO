@@ -1,0 +1,5 @@
+- Add caching layer for PS1 use
+  - Probably just cache entire JSON response
+- Un-hardcode location
+- Add icons
+- Document use
