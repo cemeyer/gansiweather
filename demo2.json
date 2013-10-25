@@ -1,0 +1,120 @@
+{
+  "sun_phase": {
+    "sunset": {
+      "minute": "37",
+      "hour": "18"
+    },
+    "sunrise": {
+      "minute": "00",
+      "hour": "8"
+    }
+  },
+  "moon_phase": {
+    "sunset": {
+      "minute": "37",
+      "hour": "18"
+    },
+    "sunrise": {
+      "minute": "00",
+      "hour": "8"
+    },
+    "current_time": {
+      "minute": "19",
+      "hour": "19"
+    },
+    "phaseofMoon": "Waning Gibbous",
+    "ageOfMoon": "21",
+    "percentIlluminated": "60"
+  },
+  "current_observation": {
+    "ob_url": "http://www.wunderground.com/cgi-bin/findweather/getForecast?query=42.250870,-83.819916",
+    "history_url": "http://www.wunderground.com/weatherstation/WXDailyHistory.asp?ID=KMIANNAR36",
+    "forecast_url": "http://www.wunderground.com/US/MI/Ann_Arbor.html",
+    "icon_url": "http://icons-ak.wxug.com/i/c/k/nt_clear.gif",
+    "icon": "clear",
+    "precip_today_metric": "0",
+    "precip_today_in": "0.00",
+    "precip_today_string": "0.00 in (0 mm)",
+    "precip_1hr_metric": " 0",
+    "precip_1hr_in": "0.00",
+    "precip_1hr_string": "0.00 in ( 0 mm)",
+    "UV": "0",
+    "solarradiation": "--",
+    "visibility_km": "16.1",
+    "visibility_mi": "10.0",
+    "feelslike_c": "4",
+    "feelslike_f": "39",
+    "feelslike_string": "39 F (4 C)",
+    "windchill_c": "4",
+    "windchill_f": "39",
+    "windchill_string": "39 F (4 C)",
+    "heat_index_c": "NA",
+    "heat_index_f": "NA",
+    "temp_f": 39.2,
+    "temperature_string": "39.2 F (4.0 C)",
+    "weather": "Clear",
+    "local_tz_offset": "-0400",
+    "local_tz_long": "America/New_York",
+    "local_tz_short": "EDT",
+    "local_epoch": "1382743191",
+    "local_time_rfc822": "Fri, 25 Oct 2013 19:19:51 -0400",
+    "image": {
+      "link": "http://www.wunderground.com",
+      "title": "Weather Underground",
+      "url": "http://icons-ak.wxug.com/graphics/wu2/logo_130x80.png"
+    },
+    "display_location": {
+      "elevation": "312.00000000",
+      "longitude": "-83.80866241",
+      "latitude": "42.27077866",
+      "wmo": "99999",
+      "full": "Ann Arbor, MI",
+      "city": "Ann Arbor",
+      "state": "MI",
+      "state_name": "Michigan",
+      "country": "US",
+      "country_iso3166": "US",
+      "zip": "48103",
+      "magic": "1"
+    },
+    "observation_location": {
+      "elevation": "1017 ft",
+      "longitude": "-83.819916",
+      "latitude": "42.250870",
+      "country_iso3166": "US",
+      "country": "US",
+      "state": "Michigan",
+      "city": "Lakewood, Ann Arbor",
+      "full": "Lakewood, Ann Arbor, Michigan"
+    },
+    "estimated": {},
+    "station_id": "KMIANNAR36",
+    "observation_time": "Last Updated on October 25, 7:19 PM EDT",
+    "observation_time_rfc822": "Fri, 25 Oct 2013 19:19:04 -0400",
+    "observation_epoch": "1382743144",
+    "temp_c": 4,
+    "relative_humidity": "64%",
+    "wind_string": "Calm",
+    "wind_dir": "South",
+    "wind_degrees": 180,
+    "wind_mph": 0.7,
+    "wind_gust_mph": "2.2",
+    "wind_kph": 1.1,
+    "wind_gust_kph": "3.5",
+    "pressure_mb": "1024",
+    "pressure_in": "30.23",
+    "pressure_trend": "-",
+    "dewpoint_string": "28 F (-2 C)",
+    "dewpoint_f": 28,
+    "dewpoint_c": -2,
+    "heat_index_string": "NA"
+  },
+  "response": {
+    "features": {
+      "astronomy": 1,
+      "conditions": 1
+    },
+    "termsofService": "http://www.wunderground.com/weather/api/d/terms.html",
+    "version": "0.1"
+  }
+}
