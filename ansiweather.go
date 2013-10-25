@@ -16,10 +16,13 @@ import "fmt"
 import "io/ioutil"
 import "net/http"
 import "os"
+import "strconv"
+import "strings"
 import "syscall"
 import "time"
 
 var sflag = false
+var dflag = false
 var configfile = ".config/gansiweather.conf"
 var cachefile = ".config/gansiweather.cache.json"
 var cachelkfile = ".config/gansiweather.cache.lk"
@@ -41,15 +44,19 @@ type Config struct {
 }
 
 type WData struct {
-	City       string
-	Conditions string
-	Humidity   string
-	Temp       string
+	City        string
+	Conditions  string
+	CurrentTime uint64 /* minutes since midnight */
+	Humidity    string
+	SunriseTime uint64
+	SunsetTime  uint64
+	Temp        string
 }
 
 func init() {
-	flag.BoolVar(&sflag, "shell", false, "Escape ANSI color sequences so "+
+	flag.BoolVar(&sflag, "s", false, "Escape ANSI color sequences so "+
 		"they are ignored for length purposes")
+	flag.BoolVar(&dflag, "d", false, "Debug")
 }
 
 func main() {
@@ -153,6 +160,9 @@ func openCacheLock(how int) (lkf *os.File, err error) {
 		return
 	}
 
+	if dflag {
+		fmt.Printf("XXX attempting to flock cache: %d\n", how)
+	}
 	err = syscall.Flock(int(lkf.Fd()), how)
 	if err != nil {
 		lkf.Close()
@@ -190,20 +200,7 @@ func queryWService() (res WData, err error) {
 
 	var body []byte
 	if present {
-		var lkf, c *os.File
-		lkf, err = openCacheLock(syscall.LOCK_SH)
-		if err != nil {
-			return
-		}
-		defer lkf.Close()
-
-		c, err = os.Open(fqchfile)
-		if err != nil {
-			return
-		}
-		defer c.Close()
-
-		body, err = ioutil.ReadAll(c)
+		body, err = readCache()
 		if err != nil {
 			return
 		}
@@ -227,6 +224,26 @@ func queryWService() (res WData, err error) {
 	}
 
 	err = parseWJson(body, &res)
+	return
+}
+
+func readCache() (body []byte, err error) {
+	var lkf, c *os.File
+	lkf, err = openCacheLock(syscall.LOCK_SH)
+	if err != nil {
+		return
+	}
+	defer lkf.Close()
+
+	fqchfile := home + "/" + cachefile
+
+	c, err = os.Open(fqchfile)
+	if err != nil {
+		return
+	}
+	defer c.Close()
+
+	body, err = ioutil.ReadAll(c)
 	return
 }
 
@@ -255,12 +272,18 @@ func updateCache(runInBg bool) (body []byte, err error) {
 }
 
 // api_key, ST, City_Name
-var conditions_query = "http://api.wunderground.com/api/%s/conditions/q/" +
-	"%s/%s.json"
+var conditions_query = "http://api.wunderground.com/api/%s/conditions" +
+	"/astronomy/q/%s/%s.json"
 
 func queryHttp() (res []byte, err error) {
 	url := fmt.Sprintf(conditions_query, api_key, state, city)
+	if dflag {
+		fmt.Printf(">>> GET %s\n", url)
+	}
 	resp, err := http.Get(url)
+	if dflag {
+		fmt.Printf("<<< GET complete\n", url)
+	}
 	if err != nil {
 		return
 	}
@@ -299,8 +322,18 @@ type ErrorStatus struct {
 type ResponseStatus struct {
 	Error ErrorStatus
 }
+type HMTime struct {
+	Hour   string
+	Minute string
+}
+type MoonPhaseResp struct {
+	CurrentTime HMTime `json:"current_time"`
+	Sunrise     HMTime
+	Sunset      HMTime
+}
 type ConditionsResp struct {
 	CurrentObservation CurrentObservationResp `json:"current_observation"`
+	MoonPhase          MoonPhaseResp          `json:"moon_phase"`
 	Response           ResponseStatus
 }
 
@@ -329,15 +362,38 @@ func parseWJson(d []byte, wd *WData) (err error) {
 	wd.Temp = fmt.Sprintf("%.02f°F", co.TempF)
 	wd.Conditions = co.Weather
 	wd.Humidity = co.Humidity
+
+	mp := &obs.MoonPhase
+	if mp.CurrentTime.Hour != "" {
+		wd.CurrentTime = hmTimeToMinutes(&mp.CurrentTime)
+		wd.SunriseTime = hmTimeToMinutes(&mp.Sunrise)
+		wd.SunsetTime = hmTimeToMinutes(&mp.Sunset)
+	}
 	return
 }
 
+func hmTimeToMinutes(hmt *HMTime) (res uint64) {
+	h, err := strconv.ParseUint(hmt.Hour, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	m, err := strconv.ParseUint(hmt.Minute, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	return (h * 60) + m
+}
+
 var colors map[string]string = map[string]string{
-	"clear": "\033[0m",
-	"dash":  "\033[34m",
-	"data":  "\033[33;1m",
-	"delim": "\033[35m",
-	"text":  "\033[36;1m",
+	"clear":  "\033[0m",
+	"clouds": "\033[37;1m",
+	"dash":   "\033[34m",
+	"data":   "\033[33;1m",
+	"delim":  "\033[35m",
+	"moon":   "\033[36m",
+	"sun":    "\033[33;1m",
+	"text":   "\033[36;1m",
 }
 
 func color(c string) (res string) {
@@ -352,6 +408,57 @@ func color(c string) (res string) {
 }
 
 func formatWData(d WData) string {
+	conditions := map[string]string{
+		"Clear":    "clear",
+		"Cloud":    "cloudy",
+		"Overcast": "cloudy",
+		"Haze":     "cloudy",
+		"Fog":      "cloudy",
+		"Mist":     "rain",
+		"Rain":     "rain",
+		"Snow":     "snow",
+		"Ice":      "snow",
+	}
+
+	cond := d.Conditions
+	for k, v := range conditions {
+		if strings.Contains(cond, k) {
+			cond = v
+			break
+		}
+	}
+
+	if cond == "clear" {
+		if d.CurrentTime < d.SunsetTime &&
+			d.CurrentTime > d.SunriseTime {
+			cond = "sun"
+		} else {
+			cond = "moon"
+		}
+	}
+
+	type wSymbol struct {
+		color  string
+		symbol string
+	}
+
+	secconditions := map[string]wSymbol{
+		"sun":    {color: "sun", symbol: "☀"},
+		"moon":   {color: "moon", symbol: "☾"},
+		"cloudy": {color: "clouds", symbol: "☁"},
+		"rain":   {symbol: "☔"},
+		"snow":   {symbol: "❄"},
+	}
+
+	icon := color("text") + "(" + cond + ")"
+	if symcol, ok := secconditions[cond]; ok {
+		col := ""
+		if _, ok := colors[symcol.color]; ok {
+			col = color(symcol.color)
+		}
+		icon = col + symcol.symbol
+	}
+
 	chars := map[string]string{
 		"dash":  ",",
 		"delim": ":",
@@ -361,7 +468,7 @@ func formatWData(d WData) string {
 	res += color("text") + d.City
 	res += color("delim") + chars["delim"]
 	res += color("data") + " " + d.Temp + " "
-	//res += icon
+	res += icon
 	res += color("dash") + chars["dash"]
 	res += color("text") + " Humidity"
 	res += color("delim") + chars["delim"]
