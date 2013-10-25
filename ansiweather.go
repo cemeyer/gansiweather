@@ -19,22 +19,25 @@ import "os"
 
 var sflag = false
 var configfile = ".config/gansiweather.conf"
+var home = ""
 
 // defaults
 var api_key = ""
 var cache_seconds uint64 = 10 * 60
-var location = "Seattle,WA"
+var city = "Seattle"
+var state = "WA"
 var units = "imperial"
 
 type Config struct {
 	ApiKey       string
 	CacheSeconds uint64
-	Location     string
+	City         string
+	State        string
 	Units        string
 }
 
 type WData struct {
-    City       string
+	City       string
 	Conditions string
 	Humidity   string
 	Temp       string
@@ -58,7 +61,7 @@ func main() {
 		goto out
 	}
 
-    print(formatWData(data))
+	print(formatWData(data))
 
 out:
 	if err != nil {
@@ -70,7 +73,7 @@ out:
 func start() (err error) {
 	flag.Parse()
 
-	home := os.Getenv("HOME")
+	home = os.Getenv("HOME")
 	if len(home) == 0 {
 		return fmt.Errorf("Could not read $HOME")
 	}
@@ -114,7 +117,7 @@ func readConfig(cfile string) (err error) {
 		return
 	}
 
-	if len(m.ApiKey) == 0 {
+	if m.ApiKey == "" {
 		return fmt.Errorf("%s: ApiKey is not set", cfile)
 	} else {
 		api_key = m.ApiKey
@@ -122,11 +125,18 @@ func readConfig(cfile string) (err error) {
 	if m.CacheSeconds > 0 {
 		cache_seconds = m.CacheSeconds
 	}
-	if len(m.Location) > 0 {
-		location = m.Location
+	if m.City != "" {
+		city = m.City
 	}
-	if len(m.Units) > 0 {
+	if m.State != "" {
+		state = m.State
+	}
+	if m.Units != "" {
 		units = m.Units
+	}
+
+	if units != "imperial" && units != "metric" {
+		return fmt.Errorf("Bad units: %s", units)
 	}
 	return
 }
@@ -139,25 +149,29 @@ type DisplayLocationResp struct {
 	City string
 }
 type CurrentObservationResp struct {
-    DisplayLocation  DisplayLocationResp `json:"display_location"`
-	FeelsLikeC       string `json:"feelslike_c"`
-	FeelsLikeF       string `json:"feelslike_f"`
-	Humidity         string `json:"relative_humidity"`
+	DisplayLocation  DisplayLocationResp `json:"display_location"`
+	FeelsLikeC       string              `json:"feelslike_c"`
+	FeelsLikeF       string              `json:"feelslike_f"`
+	Humidity         string              `json:"relative_humidity"`
 	Icon             string
 	ObservationEpoch string  `json:"observation_epoch"`
 	TempC            float64 `json:"temp_c"`
 	TempF            float64 `json:"temp_f"`
 	Weather          string
 }
+type ErrorStatus struct {
+	Description string
+	Type        string
+}
+type ResponseStatus struct {
+	Error ErrorStatus
+}
 type ConditionsResp struct {
 	CurrentObservation CurrentObservationResp `json:"current_observation"`
+	Response           ResponseStatus
 }
 
 func queryWService() (res WData, err error) {
-	// FIXME hardcoded for now
-	city := "Ann_Arbor"
-	state := "MI"
-
 	url := fmt.Sprintf(conditions_query, api_key, state, city)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -190,54 +204,65 @@ func parseWJson(d []byte, wd *WData) (err error) {
 		return
 	}
 
+	if et := obs.Response.Error.Type; et != "" {
+		ed := obs.Response.Error.Description
+		if et == "keynotfound" {
+			return fmt.Errorf("The service rejected your API key: %s", ed)
+		} else if et == "querynotfound" {
+			return fmt.Errorf("%s. Only US cities work; please separate "+
+				"names with underscores. E.g., 'Ann_Arbor'", ed)
+		}
+
+		return fmt.Errorf("%s: %s", et, ed)
+	}
+
 	co := &obs.CurrentObservation
 
-    wd.City = co.DisplayLocation.City
+	wd.City = co.DisplayLocation.City
 	wd.Temp = fmt.Sprintf("%.02f°F", co.TempF)
 	wd.Conditions = co.Weather
 	wd.Humidity = co.Humidity
 	return
 }
 
-var colors map[string]string = map[string]string {
-    "clear": "\033[0m",
-    "dash": "\033[34m",
-    "data": "\033[33;1m",
-    "delim": "\033[35m",
-    "text": "\033[36;1m",
+var colors map[string]string = map[string]string{
+	"clear": "\033[0m",
+	"dash":  "\033[34m",
+	"data":  "\033[33;1m",
+	"delim": "\033[35m",
+	"text":  "\033[36;1m",
 }
 
 func color(c string) (res string) {
-    res, ok := colors[c]
-    if !ok {
-        panic("color")
-    }
-    if sflag {
-        res = "%{" + res + "%}"
-    }
-    return res
+	res, ok := colors[c]
+	if !ok {
+		panic("color")
+	}
+	if sflag {
+		res = "%{" + res + "%}"
+	}
+	return res
 }
 
 func formatWData(d WData) string {
+	chars := map[string]string{
+		"dash":  ",",
+		"delim": ":",
+	}
 
-    chars := map[string]string {
-        "dash": ",",
-        "delim": ":",
-    }
+	res := ""
+	res += color("text") + d.City
+	res += color("delim") + chars["delim"]
+	res += color("data") + " " + d.Temp + " "
+	//res += icon
+	res += color("dash") + chars["dash"]
+	res += color("text") + " Humidity"
+	res += color("delim") + chars["delim"]
+	res += color("data") + " " + d.Humidity
+	if sflag {
+		res += "%"
+	}
 
-    res := ""
-    res += color("text") + d.City
-    res += color("delim") + chars["delim"]
-    res += color("data") + " " + d.Temp + " "
-    //res += icon
-    res += color("dash") + chars["dash"]
-    res += color("text") + " Humidity"
-    res += color("delim") + chars["delim"]
-    res += color("data") + " " + d.Humidity
-    if sflag {
-        res += "%"
-    }
-
-    res += color("clear")
-    return res
+	res += color("clear")
+	return res
 }
