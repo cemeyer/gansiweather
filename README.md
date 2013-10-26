@@ -25,9 +25,9 @@ I recommend installing in `~/.local/bin/` but anywhere on `$PATH` is fine.
 
 First, configure `~/.config/gansiweather.conf`. Here is an example:
     {
-        "ApiKey": "XXX",
-        "City": "Ann_Arbor",
-        "State": "MI"
+    "ApiKey": "XXX",
+    "City": "Ann_Arbor",
+    "State": "MI"
     }
 
 Then simply invoke:
