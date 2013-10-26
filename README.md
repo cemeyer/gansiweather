@@ -23,7 +23,8 @@ I recommend installing in `~/.local/bin/` but anywhere on `$PATH` is fine.
 
 ## Usage
 
-First, configure `~/.config/gansiweather.conf`. Here is an example:
+First, configure `~/.config/gansiweather.conf`. Here is an example (it is just
+JSON):
 
     {
         "ApiKey": "XXX",
@@ -58,7 +59,7 @@ your `.zshrc`:
     setopt promptsubst
     PS1='$(gansiweather -s) foo bar $ '
 
-The `-s` option to gansiweather escapes non-printing ANSI color codes so that
+The `-s` option to `gansiweather` escapes non-printing ANSI color codes so that
 zsh knows how wide the prompt is.
 
 ## License
