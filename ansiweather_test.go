@@ -79,3 +79,43 @@ func TestParseWJsonErrorCityNoEnt(t *testing.T) {
 			expm)
 	}
 }
+
+func TestParseAstroWJson(t *testing.T) {
+	body := readFile("demo2.json", t)
+
+	var wd WData
+	err := parseWJson(body, &wd)
+	if err != nil {
+		t.Error("parse: ", err)
+	}
+
+	expTmp := "39.20°F"
+	if wd.Temp != expTmp {
+		t.Error("temp:", wd.Temp, "!=", expTmp)
+	}
+
+	expWeather := "Clear"
+	if wd.Conditions != expWeather {
+		t.Error("cond:", wd.Conditions, "!=", expWeather)
+	}
+
+	expHumidity := "64%"
+	if wd.Humidity != expHumidity {
+		t.Error("humidity:", wd.Humidity, "!=", expHumidity)
+	}
+
+	expSunriseTime := uint64(8 * 60)
+	if wd.SunriseTime != expSunriseTime {
+		t.Error("sunrise:", wd.SunriseTime, "!=", expSunriseTime)
+	}
+
+	expSunsetTime := uint64(18*60 + 37)
+	if wd.SunsetTime != expSunsetTime {
+		t.Error("sunset:", wd.SunsetTime, "!=", expSunsetTime)
+	}
+
+	expCurrentTime := uint64(19*60 + 19)
+	if wd.CurrentTime != expCurrentTime {
+		t.Error("currentTime:", wd.CurrentTime, "!=", expCurrentTime)
+	}
+}
