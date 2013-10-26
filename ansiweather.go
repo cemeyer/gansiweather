@@ -16,6 +16,8 @@ import "fmt"
 import "io/ioutil"
 import "net/http"
 import "os"
+import "os/exec"
+import "runtime"
 import "strconv"
 import "strings"
 import "syscall"
@@ -23,6 +25,7 @@ import "time"
 
 var sflag = false
 var dflag = false
+var bflag = false
 var configfile = ".config/gansiweather.conf"
 var cachefile = ".config/gansiweather.cache.json"
 var cachelkfile = ".config/gansiweather.cache.lk"
@@ -57,6 +60,7 @@ func init() {
 	flag.BoolVar(&sflag, "s", false, "Escape ANSI color sequences so "+
 		"they are ignored for length purposes")
 	flag.BoolVar(&dflag, "d", false, "Debug")
+	flag.BoolVar(&bflag, "b", false, "Background cache update")
 }
 
 func main() {
@@ -69,6 +73,10 @@ func main() {
 
 	data, err = queryWService()
 	if err != nil {
+		goto out
+	}
+
+	if bflag {
 		goto out
 	}
 
@@ -216,14 +224,9 @@ func queryWService() (res WData, err error) {
 			return
 		}
 
-		// We can't background update cache anyways, so we might as well serve
-		// the fresh data
-		/*
-			if !present {
-				body = newbody
-			}
-		*/
-		body = newbody
+		if !present {
+			body = newbody
+		}
 	}
 
 	err = parseWJson(body, &res)
@@ -251,8 +254,40 @@ func readCache() (body []byte, err error) {
 }
 
 func updateCache(runInBg bool) (body []byte, err error) {
-	// We can't do this in background without re-invoking our process (probably
-	// with some hidden? flag). Damn you issue 227.
+	// Don't recurse if bflag is set.
+	if bflag {
+		goto fg
+	}
+
+	// We can't do this in background without re-invoking our process. Damn you
+	// issue 227.
+	if runInBg && runtime.GOOS == "linux" {
+		var self_exe string
+		self_exe, err = os.Readlink("/proc/self/exe")
+		if err != nil {
+			err = nil
+			goto fg
+		}
+
+		// XXX I think this still waits for the command to complete. WIP
+		cmd := exec.Command( /*"daemonize", */ self_exe, "-b")
+		err = cmd.Start()
+		if err != nil {
+			err = nil
+			goto fg
+		}
+
+		ip, _ := cmd.StdinPipe()
+		ip.Close()
+		op, _ := cmd.StdoutPipe()
+		op.Close()
+		ep, _ := cmd.StderrPipe()
+		ep.Close()
+
+		return
+	}
+
+fg:
 	body, err = queryHttp()
 	if err != nil {
 		body = nil
