@@ -72,7 +72,10 @@ func main() {
 		goto out
 	}
 
-	print(formatWData(data))
+	fmt.Print(formatWData(data))
+	if !sflag {
+		fmt.Print("\n")
+	}
 
 out:
 	if err != nil {
