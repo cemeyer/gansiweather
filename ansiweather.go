@@ -278,11 +278,17 @@ func updateCache(runInBg bool) (body []byte, err error) {
 		}
 
 		ip, _ := cmd.StdinPipe()
-		ip.Close()
+		if ip != nil {
+			ip.Close()
+		}
 		op, _ := cmd.StdoutPipe()
-		op.Close()
+		if op != nil {
+			op.Close()
+		}
 		ep, _ := cmd.StderrPipe()
-		ep.Close()
+		if ep != nil {
+			ep.Close()
+		}
 
 		return
 	}
